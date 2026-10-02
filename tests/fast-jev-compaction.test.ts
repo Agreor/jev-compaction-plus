@@ -76,9 +76,12 @@ describe('options', () => {
     expect(resolveOptions()).toMatchObject({
       keepThreshold: 0.5,
       preserveRecentMessages: 6,
-      maxStateTokens: 25_000,
+      maxStateTokens: 14_000,
       maxRequestTokens: 30_000,
       truncateHeadChars: 300,
+      previewChars: 600,
+      minDropChars: 1500,
+      drawerDir: '.jev-drawer',
     });
     expect(resolveOptions({
       keepThreshold: Number.NaN,
@@ -133,7 +136,7 @@ describe('state fitting', () => {
     expect(state.history[1]?.tool_calls?.[0]).toMatchObject({
       id: 't1',
       tool: 'Read',
-      result: `ok, ${fileA.length} chars (omitted)`,
+      result: `ok, ${fileA.length} chars (preview in its question)`,
     });
     expect((state.history[4]?.tool_calls?.[0] as HistoryToolCall).result).toMatch(/^error, /);
   });
@@ -153,10 +156,10 @@ describe('state fitting', () => {
     ];
     const { state, stage, tokens } = fitState(messages, collectToolCalls(messages, 0), {
       ...fit,
-      maxStateTokens: 300,
+      maxStateTokens: 340,
     });
     expect(stage).toBe('inputs<=200');
-    expect(tokens).toBeLessThanOrEqual(300);
+    expect(tokens).toBeLessThanOrEqual(340);
     expect(state.history[0]?.text).toBe('start');
     expect((state.history[1]?.tool_calls?.[0] as HistoryToolCall).input.length).toBeLessThanOrEqual(200);
   });
@@ -344,7 +347,7 @@ describe('compact', () => {
     const output = await compact(
       messages,
       fakeJev((name) => (name.startsWith('call_') ? 0.9 : 0.1), seen),
-      { preserveRecentMessages: 1, maxRequestTokens: stateTokens + 150 },
+      { preserveRecentMessages: 1, maxRequestTokens: stateTokens + 250, minDropChars: 0, previewChars: 200 },
     );
 
     expect(output.stats.requests).toBe(seen.length);

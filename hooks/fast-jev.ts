@@ -8,7 +8,7 @@ import type {
   TurnCompleteInput,
 } from 'claude-code';
 
-import { compact, reductionRatio, resolveOptions } from '../src/compact.js';
+import { compact, DEFAULT_OPTIONS, reductionRatio, resolveOptions } from '../src/compact.js';
 import { buildJevRequest, DEFAULT_MODEL, parseJevResponse } from '../src/request.js';
 import type {
   CompactOptions,
@@ -45,6 +45,8 @@ export type HookConfig = CompactOptions & {
   compactAtPercent: number;
   minReductionRatio: number;
   model: string;
+  /** Alternate Jev endpoint. Unset: TypeSafe's own API, or OpenRouter's when the key is an OpenRouter key. */
+  baseUrl?: string;
 };
 
 function optionNumber(options: PluginOptions, key: string, fallback: number): number {
@@ -66,6 +68,8 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
     'maxStateTokens',
     'maxRequestTokens',
     'truncateHeadChars',
+    'previewChars',
+    'minDropChars',
   ] as const) {
     const value = options[key];
     if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
@@ -84,14 +88,45 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
   if (apiKey) config.apiKey = apiKey;
   const goal = optionString(options, 'goal');
   if (goal) config.goal = goal;
+  const drawerDir = options['drawerDir'];
+  if (typeof drawerDir === 'string') config.drawerDir = drawerDir;
+  const baseUrl = optionString(options, 'baseUrl');
+  if (baseUrl) config.baseUrl = baseUrl;
   return config;
 }
 
+export const OPENROUTER_URL = 'https://openrouter.ai/api/alpha/decisions';
+export const OPENROUTER_MODEL = 'typesafe/jev-1.13';
+
+/**
+ * Where to send Jev calls: an explicit `baseUrl` wins; otherwise an OpenRouter
+ * key (`sk-or-...`) goes to OpenRouter's decisions API, anything else to TypeSafe.
+ */
+export function resolveEndpoint(
+  config: Pick<HookConfig, 'baseUrl' | 'model'>,
+  apiKey: string,
+): { baseUrl?: string; model: string } {
+  if (config.baseUrl) return { baseUrl: config.baseUrl, model: config.model };
+  if (apiKey.startsWith('sk-or-')) {
+    return {
+      baseUrl: OPENROUTER_URL,
+      model: config.model === DEFAULT_MODEL ? OPENROUTER_MODEL : config.model,
+    };
+  }
+  return { model: config.model };
+}
+
+/** A relative drawer folder resolved against the session's directory, so labels hold absolute paths. */
+export function drawerPath(dir: string, cwd: string): string {
+  if (!dir || /^([A-Za-z]:[\\/]|[\\/])/.test(dir)) return dir;
+  return `${cwd.replace(/[\\/]+$/, '')}/${dir}`;
+}
+
 /** A `JevAsker` over the engine's `$.http.fetch`. */
-export function jevAsker(fetchFn: HookFetch, apiKey: string, model: string): JevAsker {
+export function jevAsker(fetchFn: HookFetch, apiKey: string, model: string, baseUrl?: string): JevAsker {
   return {
     async ask(state, questions) {
-      const request = buildJevRequest({ apiKey, model }, state, questions);
+      const request = buildJevRequest({ apiKey, model, baseUrl }, state, questions);
       const response = await fetchFn(request.url, {
         method: request.method,
         headers: request.headers,
@@ -168,7 +203,12 @@ export async function compactSession(
   fetchFn: HookFetch,
 ): Promise<SessionCompaction> {
   if (!config.apiKey) throw new Error('TYPESAFE_API_KEY is not configured');
-  const result = await compact(messages, jevAsker(fetchFn, config.apiKey, config.model), config);
+  const endpoint = resolveEndpoint(config, config.apiKey);
+  const result = await compact(
+    messages,
+    jevAsker(fetchFn, config.apiKey, endpoint.model, endpoint.baseUrl),
+    config,
+  );
   return { result, messages: toSessionMessages(messages, result.messages) };
 }
 
@@ -180,7 +220,7 @@ export function summarize(result: CompactResult): string {
   const { stats } = result;
   const parts = [
     stats.kept > 0 ? `${stats.kept} kept` : '',
-    stats.resultsDropped > 0 ? `${stats.resultsDropped} results truncated` : '',
+    stats.resultsDropped > 0 ? `${stats.resultsDropped} results moved to drawer` : '',
     stats.callsDropped > 0 ? `${stats.callsDropped} call_dropped` : '',
     stats.pinned > 0 ? `${stats.pinned} pinned` : '',
   ].filter(Boolean);
@@ -262,12 +302,20 @@ export const register: Register = (on: On, options: PluginOptions) => {
 
   on('session.compact', async ($, event, next) => {
     try {
-      const config = { ...configured, apiKey: await getApiKey($, configured) };
+      const config = {
+        ...configured,
+        apiKey: await getApiKey($, configured),
+        drawerDir: drawerPath(configured.drawerDir ?? DEFAULT_OPTIONS.drawerDir, await $.session.cwd()),
+      };
       const { result, messages } = await compactSession(event.messages, config, async (url, init) => {
         const response = await $.http.fetch(url, init);
         return { status: response.status, ok: response.ok, text: response.text };
       });
       for (const line of decisionLogLines(result)) $.ui.log(line);
+      if (reductionRatio(result) >= config.minReductionRatio) {
+        // jev-compaction-plus: write the drawer first; if that fails, nothing is dropped
+        for (const file of result.drawer) await $.fs.write(file.path, file.text);
+      }
       if (reductionRatio(result) < config.minReductionRatio) {
         notify(
           $,

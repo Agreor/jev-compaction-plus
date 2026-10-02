@@ -42,6 +42,8 @@ export interface ToolCall {
   /** Index of the message holding the tool_result block. */
   resultIndex: number;
   resultChars: number;
+  /** Head and tail of the result, shown to Jev in its question (jev-compaction-plus). */
+  resultPreview: string;
   isError: boolean;
   /** In the first or the newest preserved messages; never a candidate. */
   pinned: boolean;
@@ -60,7 +62,7 @@ export interface CallDecision extends CallAnswer {
   id: string;
   tool: string;
   action: CallAction;
-  reason: 'pinned' | 'kept' | 'result_dropped' | 'call_dropped';
+  reason: 'pinned' | 'small' | 'kept' | 'result_dropped' | 'call_dropped';
 }
 
 export interface HistoryToolCall {
@@ -105,6 +107,12 @@ export interface CompactOptions {
   maxRequestTokens?: number;
   /** Characters of a dropped tool result to retain. Default 300. */
   truncateHeadChars?: number;
+  /** Characters of each tool result Jev sees when deciding. Default 600. */
+  previewChars?: number;
+  /** Results shorter than this are always kept. Default 1500. */
+  minDropChars?: number;
+  /** Folder (relative to the session) that dropped results move to; '' deletes them as before. Default '.jev-drawer'. */
+  drawerDir?: string;
 }
 
 export interface ResolvedCompactOptions {
@@ -114,12 +122,17 @@ export interface ResolvedCompactOptions {
   maxStateTokens: number;
   maxRequestTokens: number;
   truncateHeadChars: number;
+  previewChars: number;
+  minDropChars: number;
+  drawerDir: string;
 }
 
 export interface CompactResult {
   /** The compacted transcript; untouched messages are the input objects. */
   messages: Message[];
   decisions: CallDecision[];
+  /** Files to write so dropped results can be read back; empty when the drawer is off. */
+  drawer: { path: string; text: string }[];
   stats: {
     messagesBefore: number;
     messagesAfter: number;
