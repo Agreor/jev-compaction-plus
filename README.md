@@ -95,14 +95,14 @@ Put both in `~/.claude/settings.json`, so every session (terminal, desktop app, 
 Then install the plugin:
 
 ```sh
-claude plugin marketplace add cth9191/jev-compaction-plus
+claude plugin marketplace add Agreor/jev-compaction-plus
 claude plugin install jev-compaction-plus@jev-compaction-plus
 ```
 
 Or run it straight from a clone (this is how it was tested):
 
 ```sh
-git clone https://github.com/cth9191/jev-compaction-plus
+git clone https://github.com/Agreor/jev-compaction-plus
 cd your-project
 claude --plugin-dir /path/to/jev-compaction-plus
 ```
@@ -153,4 +153,4 @@ npm run typecheck
 
 ## Credits
 
-This is built on [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) by tamara tran (MIT): the state fitting, batching and hook design are theirs. The changes listed above are ours. MIT licensed, see [LICENSE](LICENSE).
+This is built on [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) by tamara tran (MIT): the state fitting, batching and hook design are theirs. The drawer, previews and other changes listed above come from [jev-compaction-plus](https://github.com/cth9191/jev-compaction-plus) by cth9191 (MIT). Agreor maintains this copy independently and adds the plugin-trigger skip, subagent-turn guard and safer drawer writes. MIT licensed, see [LICENSE](LICENSE).
