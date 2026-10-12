@@ -41,9 +41,9 @@ These numbers come from one session and one quiz, so treat them as an example, n
 /compact (or auto-compact at 60% context)
       │
       ▼
-Jev gets the conversation (texts + tool calls) and, for every old tool result,
+Jev gets the conversation (texts + tool calls) and, for every eligible old tool result,
 a yes/no question that quotes a preview of that result:
-"does the assistant still need this output word for word?"
+"does the assistant need this output verbatim now, given that it can be read back?"
       │
       ├─ yes ............................ result stays, word for word
       ├─ no, but it's tiny (<1,500 chars) result stays (dropping it saves nothing)
@@ -58,7 +58,9 @@ a yes/no question that quotes a preview of that result:
   - your messages and Claude's replies, which are never touched;
   - the first message;
   - the newest 6 messages.
-- **Fallback:** if Jev fails, or can't cut at least 25%, Claude Code's normal summary runs instead.
+- **Fewer judgments:** pinned results, outputs under `minDropChars`, and existing drawer pointers are excluded before requesting Jev. Drawer mode asks one question per eligible result; tool calls stay. Empty `drawerDir` retains the original call-and-result judgments.
+- **Retry spacing:** automatic attempts wait for context usage to rise five percentage points after each attempt, whether it succeeded, skipped, or failed. When observed usage falls, spacing starts from that lower usage; the next attempt must still meet the 60% trigger. The retry ceiling is 100%, with no repeated attempts at unchanged usage. Manual `/compact` is unaffected.
+- **Fallback:** manual or native compaction uses Claude Code's normal summary if Jev fails or cannot cut at least 10%. Plugin-triggered attempts leave the conversation unchanged instead.
 - **The drawer:** each compaction gets its own folder, with an `INDEX.md` listing what was moved. The drawer has its own `.gitignore`, so it never ends up in a commit.
 
 ### What's different from fast-jev-compaction
@@ -67,7 +69,7 @@ a yes/no question that quotes a preview of that result:
    - The original sent Jev a one-line note per result (`Read config/app.env → ok, 833 chars (omitted)`), so Jev decided from the file name.
    - Here, each question quotes the start and end of the result (600 characters by default).
 2. **Tiny results always stay.** Results under 1,500 characters are kept, because dropping them saves almost nothing and they're often exactly the value you need later.
-3. **Dropped doesn't mean deleted.** Dropped results go to the drawer, and the call stays in the session with a label pointing at the file. A wrong decision costs one file read, not a lost fact.
+3. **Dropped doesn't mean deleted.** Dropped results go to the drawer, and the call stays in the session with a label pointing at the file. A wrong decision costs one file read, not a lost fact. The classifier asks whether exact contents are needed for upcoming actions or unresolved work, rather than whether they might be useful someday.
 4. **Bug fix for split replies.**
    - Claude Code stores one Opus reply that makes several tool calls as several pieces sharing one message id.
    - Rewriting the "tool call" piece breaks that link, and Claude Code then reports the sibling results as "Tool result missing due to internal error".
@@ -115,13 +117,13 @@ Set these in the plugin's options (`.claude-plugin/plugin.json` → `userConfig`
 
 | Option | Default | What it does |
 |---|---:|---|
-| `keepThreshold` | `0.5` | Jev's minimum "still needed" probability to keep a result. **Lower is more cautious.** |
+| `keepThreshold` | `0.5` | Jev's minimum "still needed" probability to keep a result. **Lower is more cautious.** In drawer mode only the result is judged. |
 | `previewChars` | `600` | How much of each result Jev sees (start + end). |
 | `minDropChars` | `1500` | Results shorter than this are always kept. |
 | `drawerDir` | `.jev-drawer` | Where dropped results go, relative to the project. Empty = delete them like the original. |
 | `preserveRecentMessages` | `6` | Newest messages never touched. |
 | `compactAtPercent` | `60` | Context % at which the plugin starts a compaction itself. |
-| `minReductionRatio` | `0.25` | Below this cut, use the built-in summary instead. |
+| `minReductionRatio` | `0.10` | Below this cut, use the built-in summary instead. |
 | `maxStateTokens` | `14000` | Budget for the conversation view sent with every Jev request. |
 | `maxRequestTokens` | `30000` | Budget per Jev request (Jev's limit is 32k). |
 | `model` | `jev-latest` | Jev model. With an OpenRouter key this becomes `typesafe/jev-1.13`. |
@@ -143,7 +145,7 @@ Set these in the plugin's options (`.claude-plugin/plugin.json` → `userConfig`
 
 ```sh
 npm install
-npm test            # 36 tests (vitest)
+npm test            # vitest
 npm run typecheck
 ```
 
@@ -154,3 +156,5 @@ npm run typecheck
 ## Credits
 
 This is built on [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) by tamara tran (MIT): the state fitting, batching and hook design are theirs. The drawer, previews and other changes listed above come from [jev-compaction-plus](https://github.com/cth9191/jev-compaction-plus) by cth9191 (MIT). Agreor maintains this copy independently and adds the plugin-trigger skip, subagent-turn guard and safer drawer writes. MIT licensed, see [LICENSE](LICENSE).
+
+The 10% minimum and revised drawer question are initial policies, not measured classifier calibration. Reduction is estimated from characters, not actual context tokens. Conversation text (including decisions and branch discussions) stays unchanged.

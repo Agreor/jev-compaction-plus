@@ -8,7 +8,7 @@ import {
   resolveHookConfig,
   toSessionMessages,
 } from '../hooks/fast-jev.ts';
-import { collectToolCalls, compact, questionsFor, type JevAsker, type Message } from '../src/index.js';
+import { collectToolCalls, compact, fitState, questionsFor, type JevAsker, type Message } from '../src/index.js';
 import { previewOf } from '../src/state.js';
 
 type SessionMessage = Message & { handle?: string };
@@ -74,7 +74,7 @@ describe('jev-compaction-plus: small results stay', () => {
   it('keeps results under minDropChars whatever Jev says', async () => {
     const out = await compact(transcript(), jev(() => 0), { preserveRecentMessages: 1 });
     expect(out.decisions.map((d) => [d.id, d.action, d.reason])).toEqual([
-      ['t1', 'drop_call', 'call_dropped'],
+      ['t1', 'drop_result', 'result_dropped'],
       ['t2', 'keep', 'small'],
     ]);
   });
@@ -154,5 +154,57 @@ describe('jev-compaction-plus: hook helpers', () => {
     await compactSession(transcript(), config, okFetch(urls, bodies));
     expect(urls).toEqual([OPENROUTER_URL]);
     expect(JSON.parse(bodies[0]!).model).toBe(OPENROUTER_MODEL);
+  });
+});
+
+
+describe('lean drawer classification', () => {
+  it('asks only about eligible results and preserves decisions and branches', async () => {
+    const input = transcript();
+    input[5]!.text = 'Choose A for offline support. Branch B is parked until persistence fails; C was rejected for latency.';
+    const seen: string[][] = [];
+    const asker: JevAsker = { async ask(_state, questions) {
+      seen.push(Object.keys(questions));
+      return { answers: Object.fromEntries(Object.keys(questions).map(k => [k, { noul: 0 }])) };
+    } };
+    const out = await compact(input, asker, { preserveRecentMessages: 1 });
+    expect(seen).toEqual([['result_t1']]);
+    expect(out.decisions[0]!.action).toBe('drop_result');
+    expect(out.messages[1]).toBe(input[1]);
+    expect(out.messages[5]).toBe(input[5]);
+    expect(out.messages[4]).toBe(input[4]);
+  });
+
+  it('batches drawer questions within the request budget', async () => {
+    const input = transcript();
+    input[4]!.toolResults![0]!.text = bigLog;
+    const options = { preserveRecentMessages: 1, drawerDir: '/drawer', goal: '', maxStateTokens: 14000 };
+    const state = fitState(input, collectToolCalls(input, 1), options);
+    const seen: string[][] = [];
+    await compact(input, { async ask(_state, questions) {
+      seen.push(Object.keys(questions));
+      return jev(() => 1).ask(_state, questions);
+    } }, { ...options, maxRequestTokens: state.tokens + 500 });
+    expect(seen).toEqual([['result_t1'], ['result_t2']]);
+  });
+
+  it('makes no requests for small, pinned, or already archived results', async () => {
+    const input = transcript();
+    input[2]!.toolResults![0]!.text = '[Jev compaction moved this 9000-char output to /drawer/t1.txt. Read that file if you need it again.]';
+    input.push(call('recent', 'Read', {}, bigLog), result('recent', bigLog));
+    const seen: string[][] = [];
+    const ask = vi.fn(async (_state: unknown, questions: Parameters<JevAsker['ask']>[1]) => {
+      seen.push(Object.keys(questions));
+      return jev(() => 0).ask(_state as object, questions);
+    });
+    const out = await compact(input, { ask }, { preserveRecentMessages: 2, minDropChars: 0, previewChars: 0 });
+    // With minDropChars zero the tiny config is eligible; use normal cutoff for the no-request case.
+    expect(out.drawer.some(f => f.text.includes('[Jev compaction moved'))).toBe(false);
+    expect(seen).toEqual([['result_t2']]);
+    ask.mockClear();
+    const unchanged = await compact(input, { ask }, { preserveRecentMessages: 2 });
+    expect(ask).not.toHaveBeenCalled();
+    expect(unchanged.stats.requests).toBe(0);
+    expect(unchanged.messages).toEqual(input);
   });
 });

@@ -21,7 +21,7 @@ import type {
 
 const HOOK_DEFAULTS = {
   compactAtPercent: 60,
-  minReductionRatio: 0.25,
+  minReductionRatio: 0.10,
   model: DEFAULT_MODEL,
 };
 
@@ -218,8 +218,10 @@ function percent(ratio: number): string {
 
 export function summarize(result: CompactResult): string {
   const { stats } = result;
+  const small = result.decisions.filter(d => d.reason === 'small').length;
   const parts = [
     stats.kept > 0 ? `${stats.kept} kept` : '',
+    small > 0 ? `${small} small retained` : '',
     stats.resultsDropped > 0 ? `${stats.resultsDropped} results moved to drawer` : '',
     stats.callsDropped > 0 ? `${stats.callsDropped} call_dropped` : '',
     stats.pinned > 0 ? `${stats.pinned} pinned` : '',
@@ -299,7 +301,7 @@ function notify(
 export const register: Register = (on: On, options: PluginOptions) => {
   const configured = resolveHookConfig(options);
   let compacting = false;
-  let lastSkipPercent = -Infinity;
+  let lastAttemptPercent = -Infinity;
 
   on('session.compact', async ($, event, next) => {
     try {
@@ -314,7 +316,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
       });
       for (const line of decisionLogLines(result)) $.ui.log(line);
       const ratio = reductionRatio(result);
-      if (ratio >= config.minReductionRatio) {
+      if (ratio > 0 && ratio >= config.minReductionRatio) {
         // jev-compaction-plus: write the drawer first; if that fails, nothing is dropped
         // ponytail: no split for >4 MiB results; tool output caps keep them far below
         for (const file of result.drawer) {
@@ -322,12 +324,14 @@ export const register: Register = (on: On, options: PluginOptions) => {
           await $.fs.write(file.path, file.text);
         }
       }
-      if (ratio < config.minReductionRatio) {
+      if (ratio <= 0 || ratio < config.minReductionRatio) {
+        const reason = result.stats.requests === 0 ? 'no eligible outputs' :
+          ratio <= 0 ? 'no reduction' : `below ${percent(config.minReductionRatio)} minimum`;
         notify(
           $,
-          `${event.trigger === 'plugin' ? 'skipped, conversation unchanged' : 'fallback to built-in summary'} (below ${percent(config.minReductionRatio)} minimum: ${summarize(result)})`,
+          `${event.trigger === 'plugin' ? 'skipped, conversation unchanged' : 'fallback to built-in summary'} (${reason}: ${summarize(result)})`,
         );
-        return event.trigger === 'plugin' ? { skip: `below ${percent(config.minReductionRatio)} minimum` } : next(event);
+        return event.trigger === 'plugin' ? { skip: reason } : next(event);
       }
       notify(
         $,
@@ -349,12 +353,13 @@ export const register: Register = (on: On, options: PluginOptions) => {
     try {
       const { context } = await $.session.usage();
       const percentUsed = context.percent ?? 0;
-      if (percentUsed < configured.compactAtPercent || percentUsed < lastSkipPercent + 5) return next(event);
-      const result = await $.session.compact();
-      if (result && 'skip' in result) {
-        lastSkipPercent = percentUsed;
-        // ponytail: fixed +5-point backoff; make it an option if 5 proves wrong
-      }
+      // A lower usage starts a new growth cycle after automatic, manual, or native compaction.
+      if (percentUsed < lastAttemptPercent) lastAttemptPercent = percentUsed;
+      if (percentUsed < configured.compactAtPercent || percentUsed <= lastAttemptPercent ||
+          percentUsed < Math.min(lastAttemptPercent + 5, 100)) return next(event);
+      // Space all automatic attempts, including successful partial cuts and errors.
+      lastAttemptPercent = percentUsed;
+      await $.session.compact();
     } catch (error) {
       $.ui.log(
         `auto-compact skipped (${error instanceof Error ? error.message : String(error)})`,

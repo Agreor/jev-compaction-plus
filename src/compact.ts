@@ -58,8 +58,18 @@ export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOpt
   };
 }
 
-/** The two `noul` questions asked about one call: keep the call, keep its result. */
-export function questionsFor(call: ToolCall): JevQuestions {
+/** Drawer mode judges only the result; deletion mode also judges the call. */
+export function questionsFor(call: ToolCall, drawerMode = false): JevQuestions {
+  if (drawerMode) return {
+    [`result_${call.id}`]: {
+      type: 'noul',
+      instructions: `Does the assistant need the full output of tool call ${call.id} (${call.tool}, ${call.resultChars} chars) verbatim in working context to continue the ongoing work correctly, given that the full output will remain retrievable from a drawer file? Preview:\n"""\n${call.resultPreview}\n"""`,
+      criteria: {
+        true: 'Exact contents are needed for an upcoming action or unresolved question, and surrounding conversation does not adequately preserve them.',
+        false: 'The output is superseded, duplicated, already captured in conversation, or only potentially useful later and can be retrieved when needed.',
+      },
+    },
+  };
   return {
     [`call_${call.id}`]: {
       type: 'noul',
@@ -79,14 +89,14 @@ export function questionsFor(call: ToolCall): JevQuestions {
 export function batchCalls(
   calls: readonly ToolCall[],
   stateTokens: number,
-  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'>,
+  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & Partial<Pick<ResolvedCompactOptions, 'drawerDir'>>,
 ): ToolCall[][] {
   const budget = options.maxRequestTokens - stateTokens - REQUEST_OVERHEAD_TOKENS;
   const batches: ToolCall[][] = [];
   let current: ToolCall[] = [];
   let currentTokens = 0;
   for (const call of calls) {
-    const tokens = estimateTokens(JSON.stringify(questionsFor(call)));
+    const tokens = estimateTokens(JSON.stringify(questionsFor(call, !!options.drawerDir)));
     if (current.length > 0 && currentTokens + tokens > budget) {
       batches.push(current);
       current = [];
@@ -127,14 +137,15 @@ async function askBatch(
   asker: JevAsker,
   state: CompactionState,
   batch: readonly ToolCall[],
+  drawerMode = false,
 ): Promise<Map<string, CallAnswer>> {
-  const questions: JevQuestions = Object.assign({}, ...batch.map(questionsFor));
+  const questions: JevQuestions = Object.assign({}, ...batch.map(call => questionsFor(call, drawerMode)));
   const { answers } = await asker.ask(state, questions);
   return new Map(
     batch.map((call) => [
       call.id,
       {
-        keepCall: noulAnswer(answers, `call_${call.id}`),
+        keepCall: drawerMode ? 1 : noulAnswer(answers, `call_${call.id}`),
         keepResult: noulAnswer(answers, `result_${call.id}`),
       },
     ]),
@@ -324,7 +335,10 @@ export async function compact(
   const started = Date.now();
   const resolved = resolveOptions(options);
   const calls = collectToolCalls(messages, resolved.preserveRecentMessages, resolved.previewChars);
-  const candidates = calls.filter((call) => !call.pinned);
+  const candidates = calls.filter((call) =>
+    !call.pinned && call.resultChars >= resolved.minDropChars &&
+    !messages[call.resultIndex]?.toolResults?.find(result => result.tool_use_id === call.tool_use_id)?.text.startsWith('[Jev compaction moved this '),
+  );
   const charsBefore = messages.reduce((sum, message) => sum + messageChars(message), 0);
 
   let fitted: { tokens: number; stage: string } = { tokens: 0, stage: '' };
@@ -335,7 +349,7 @@ export async function compact(
     fitted = state;
     batches = batchCalls(candidates, state.tokens, resolved);
     const answered = await Promise.all(
-      batches.map((batch) => askBatch(asker, state.state, batch)),
+      batches.map((batch) => askBatch(asker, state.state, batch, !!resolved.drawerDir)),
     );
     for (const map of answered) for (const [id, answer] of map) answers.set(id, answer);
   }

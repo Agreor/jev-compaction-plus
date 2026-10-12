@@ -73,7 +73,7 @@ function fake$(options: Record<string, unknown> = {}) {
 
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest' });
+    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.10, model: 'jev-latest' });
     expect(
       resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
@@ -83,7 +83,7 @@ describe('hook config', () => {
       model: 'jev-x',
       goal: 'g',
       compactAtPercent: 60,
-      minReductionRatio: 0.25,
+      minReductionRatio: 0.10,
     });
   });
 });
@@ -161,7 +161,7 @@ describe('compactSession', () => {
   });
 
   it('throws on a missing key and on failed requests so the hook falls back', async () => {
-    const config = resolveHookConfig({ preserveRecentMessages: 1 });
+    const config = resolveHookConfig({ preserveRecentMessages: 1, minDropChars: 0 });
     await expect(compactSession(transcript(), config, jevFetch(() => 0))).rejects.toThrow(/TYPESAFE_API_KEY/);
     await expect(
       compactSession(transcript(), { ...config, apiKey: 'k' }, async () => ({ status: 500, ok: false, text: 'x' })),
@@ -216,6 +216,47 @@ describe('registered hooks', () => {
     h.percent = 2;
     await invoke(h, 'turn.complete', {});
     expect(h.compactCalls).toBe(1);
+  });
+
+  it('resets retry spacing when compaction lowers context usage', async () => {
+    const h = fake$();
+    h.$.session.compact = async () => { h.$.attempts = (h.$.attempts ?? 0) + 1; return { messages: [] }; };
+    for (const p of [61, 45, 60, 45, 60]) { h.percent = p; await invoke(h, 'turn.complete', {}); }
+    expect(h.$.attempts).toBe(3);
+  });
+
+  it('allows a final retry at 100 percent without retrying every turn', async () => {
+    const h = fake$();
+    for (const p of [96, 99, 100, 100]) { h.percent = p; await invoke(h, 'turn.complete', {}); }
+    expect(h.compactCalls).toBe(2);
+  });
+
+  it('backs off after successful automatic compaction', async () => {
+    const h = fake$();
+    h.$.session.compact = async () => { h.$.attempts = (h.$.attempts ?? 0) + 1; return { messages: [] }; };
+    for (const p of [61, 63, 66]) { h.percent = p; await invoke(h, 'turn.complete', {}); }
+    expect(h.$.attempts).toBe(2);
+  });
+
+  it.each([
+    [5000, undefined, true],
+    [20000, undefined, false],
+    [5000, 0.25, false],
+    [20000, 0.01, true],
+  ])('applies the reduction threshold with %i chars of retained text', async (padding, threshold, accepted) => {
+    const h = fake$(threshold === undefined ? {} : { minReductionRatio: threshold });
+    h.fetch = okFetch;
+    const e = event('plugin');
+    e.messages[0]!.text = 'x'.repeat(padding);
+    const out = await invoke(h, 'session.compact', e);
+    expect('messages' in out).toBe(accepted);
+    expect(h.writes.length > 0).toBe(accepted);
+  });
+
+  it('never accepts zero savings even with a zero threshold', async () => {
+    const h = fake$({ minReductionRatio: 0 }); h.fetch = jevFetch(() => 1);
+    expect(await invoke(h, 'session.compact', event('plugin'))).toHaveProperty('skip');
+    expect(h.writes).toEqual([]);
   });
 
   it('preserves an existing drawer gitignore', async () => {

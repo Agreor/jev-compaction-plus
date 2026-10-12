@@ -11,6 +11,9 @@ import type {
 export const STATE_CONTEXT =
   'A coding assistant conversation is being compacted to free context. `history` is the whole conversation so far, oldest first; tool outputs are replaced by a short `result` note and long texts may be abridged. Each question asks whether one tool call, or the full output of that call, still needs to stay in the history verbatim; the question quotes a preview (start and end) of that output. Keep an output when its contents, such as specific values, ids, settings, errors or code, could still be needed. Whatever is not kept is moved to a file the assistant can read back.';
 
+const DRAWER_CONTEXT =
+  'A coding assistant conversation is being compacted to free context. `history` is the conversation so far, oldest first; tool outputs are replaced by short result notes and long texts may be abridged. Questions quote output previews (start and end). Consider ongoing and unresolved work throughout the supplied history, including parked branches; `goal` is recent user context, not the only relevant work. Judge whether exact output contents need to remain in working context now.';
+
 /** Successive caps on the serialised tool input included per call. */
 const INPUT_CHARS = [1000, 200, 60] as const;
 const TEXT_HEAD = 400;
@@ -203,11 +206,11 @@ export function goalFromMessages(messages: readonly Message[]): string {
 export function fitState(
   messages: readonly Message[],
   calls: readonly ToolCall[],
-  options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'>,
+  options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'> & Partial<Pick<ResolvedCompactOptions, 'drawerDir'>>,
 ): FittedState {
   const goal = options.goal || goalFromMessages(messages);
   const stateOf = (history: HistoryEntry[]): CompactionState => ({
-    context: STATE_CONTEXT,
+    context: options.drawerDir ? DRAWER_CONTEXT + ' Outputs removed from working context remain retrievable from drawer files. Possible future usefulness alone does not require keeping an output verbatim.' : STATE_CONTEXT,
     goal,
     history,
   });
