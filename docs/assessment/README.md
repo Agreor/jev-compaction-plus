@@ -55,8 +55,12 @@ in the session state directory, never the host scratchpad.
 A failed extraction preserves the previous checkpoint and archived pending events.
 The renderer marks those events UNCOVERED. Structural validation checks provenance,
 not the semantic completeness of an extraction. The evaluation tests that separately.
-A lock serializes checkpoint updates. A process killed while holding the lock can leave
-`lock/`; verify no checkpoint process is active before manually removing that directory.
+A short `lock/` serializes reads and writes only; one older than 60 seconds is treated as
+left by a crashed process and removed. The model call runs outside it under
+`extracting.json`, a claim holding the owner's pid. A second process that finds a live
+claim archives new events and returns; a claim whose pid is gone or older than ten
+minutes is taken over. A result is committed only if coverage has not moved meanwhile.
+Jev calls time out after 10 seconds and fall back to the full batch.
 Corrupt/missing checkpoints fail visibly rather than silently returning an empty record.
 
 ## Host adapters (experimental, not installed)
@@ -70,7 +74,7 @@ standard host hook JSON envelope on stdin and writes JSON on stdout. Supported e
 
 Register these only in a disposable test configuration. Use `SessionStart` matcher
 `compact|resume`, `Stop` with no matcher, and `PreCompact` matcher `auto|manual`.
-Command hooks need an execution timeout of at least 120 seconds. Codex restoration
+Command hooks need an execution timeout of at least 180 seconds. Codex restoration
 handlers must set `additionalContextLimit: 0` to avoid the host truncating larger plans.
 Review/trust hooks through the host's normal flow; this prototype never bypasses trust.
 The adapters have local envelope/transcript tests; live host injection and desktop

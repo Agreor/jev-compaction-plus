@@ -44,5 +44,6 @@ it('sends only current entries, without superseded entries or their source text'
   const prompt = extractionPrompt(state, []);
   expect(prompt).toContain('Use SQLite');
   expect(prompt).toContain('"u2"');
+  expect(prompt).toContain('"sourceRoles":{"u2":"user"}');
   for (const gone of ['Use MySQL', 'EVIDENCE-TEXT', 'RATIONALE']) expect(prompt).not.toContain(gone);
 });
