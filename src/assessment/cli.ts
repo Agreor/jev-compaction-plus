@@ -11,6 +11,8 @@ import { triagedExtractor } from './triage.js';
 import { JevClient } from '../client.js';
 import type { Model } from './runner.js';
 
+// A hung Jev call must fall back to Haiku well inside PreCompact's 180s host timeout.
+const JEV_TIMEOUT_MS = 10_000;
 const defaultRoot = join(homedir(), '.local', 'state', 'compaction-assessment');
 async function stdin(): Promise<string> { let value = ''; for await (const b of process.stdin) value += b; return value; }
 export async function handleHook(root: string, host: SessionKey['host'], envelope: any, extract: Extractor): Promise<object> {
@@ -54,7 +56,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2), '--foreground'], { detached: true, stdio: ['pipe', 'ignore', 'ignore'] });
         child.stdin.end(input); child.unref(); console.log('{}'); return;
       }
-      const extract = process.env.TYPESAFE_API_KEY ? triagedExtractor(modelExtractor(model), new JevClient()) : modelExtractor(model);
+      const extract = process.env.TYPESAFE_API_KEY ? triagedExtractor(modelExtractor(model), new JevClient({ fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(JEV_TIMEOUT_MS) }) })) : modelExtractor(model);
       console.log(JSON.stringify(await handleHook(root, host, envelope, extract)));
     }
     catch (error) { console.log(JSON.stringify({ systemMessage: 'Compaction preservation incomplete: ' + (error as Error).message })); }

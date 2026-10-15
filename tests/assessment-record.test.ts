@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkpoint, inspect, render, due } from '../src/assessment/record.js';
@@ -117,4 +117,33 @@ it('bounds catch-up calls and resumes without skipping oversized events', async 
   const complete = await checkpoint(dir, key, events, extract, true);
   expect(complete.coveredEvents).toBe(3);
   expect(seen).toEqual(['u1', 'u2', 'u3']);
+});
+
+describe('lock and extraction claim', () => {
+  const many = Array.from({ length: 6 }, (_, i) => ({ id: `m${i}`, role: 'user', text: 'Use SQLite', turn: i + 1 }));
+  it('archives new events while another process is extracting', async () => {
+    const dir = await root();
+    let release!: () => void;
+    let calls = 0;
+    const slow = checkpoint(dir, key, many.slice(0, 5), async () => { if (!calls++) await new Promise<void>(r => { release = r; }); return []; }, true);
+    while (!release) await new Promise(r => setTimeout(r, 5));
+    const quick = await checkpoint(dir, key, many, async () => { throw new Error('claim is held; must not extract'); }, true);
+    expect(quick.events).toHaveLength(6);
+    release(); await slow;
+    const saved = await inspect(dir, key);
+    expect(saved.events).toHaveLength(6);
+    // The holder's second batch covers the event archived while it was extracting.
+    expect(saved.coveredEvents).toBe(6);
+    expect(calls).toBe(2);
+  });
+  it('takes over a claim whose process is gone and a lock left by a crash', async () => {
+    const dir = await root();
+    const state = await checkpoint(dir, key, [first], async () => [], false);
+    await writeFile(join(state.directory, 'extracting.json'), JSON.stringify({ pid: 2 ** 22 + 12345, at: Date.now() }));
+    await mkdir(join(state.directory, 'lock'));
+    await utimes(join(state.directory, 'lock'), new Date(Date.now() - 120_000), new Date(Date.now() - 120_000));
+    const done = await checkpoint(dir, key, [first], async () => [entry], true);
+    expect(done.entries).toHaveLength(1);
+    await expect(readFile(join(state.directory, 'extracting.json'))).rejects.toThrow();
+  });
 });
