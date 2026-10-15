@@ -34,3 +34,15 @@ it('constrains extraction provenance to original supplied event IDs and namespac
   expect(schema.properties.entries.items.properties.sourceIds.minItems).toBe(1);
   expect(extractionPrompt(state, [state.events[1]])).toContain('cp1-');
 });
+
+it('sends only current entries, without superseded entries or their source text', async () => {
+  const { extractionPrompt } = await import('../src/assessment/runner.js');
+  const state = { schema: 1 as const, host: 'claude', session: 'test', directory: '/tmp/test', coveredEvents: 2,
+    events: [{ id: 'u1', role: 'user', text: 'EVIDENCE-TEXT-ONE', turn: 1 }, { id: 'u2', role: 'user', text: 'EVIDENCE-TEXT-TWO', turn: 2 }],
+    entries: [{ id: 'old', kind: 'decision' as const, status: 'accepted' as const, text: 'Use MySQL', rationale: 'RATIONALE', sourceIds: ['u1'], supersedes: [] },
+      { id: 'new', kind: 'decision' as const, status: 'accepted' as const, text: 'Use SQLite', rationale: '', sourceIds: ['u2'], supersedes: ['old'] }] };
+  const prompt = extractionPrompt(state, []);
+  expect(prompt).toContain('Use SQLite');
+  expect(prompt).toContain('"u2"');
+  for (const gone of ['Use MySQL', 'EVIDENCE-TEXT', 'RATIONALE']) expect(prompt).not.toContain(gone);
+});

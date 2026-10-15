@@ -85,7 +85,7 @@ export function due(events: Event[], coveredEvents: number): boolean {
   const previous = coveredEvents ? events[coveredEvents - 1].turn : 0;
   return !!delta.length && (delta[delta.length - 1].turn - previous >= 5 || estimateTokens(delta.map(e => e.text).join('\n')) >= 8000);
 }
-export async function checkpoint(root: string, key: SessionKey, incoming: Event[], extract: Extractor, force = false): Promise<RecordState> {
+export async function checkpoint(root: string, key: SessionKey, incoming: Event[], extract: Extractor, force = false, maxBatches = 2): Promise<RecordState> {
   validateEvents(incoming);
   const dir = directory(root, key);
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -104,8 +104,8 @@ export async function checkpoint(root: string, key: SessionKey, incoming: Event[
       await atomic(join(dir, 'events.json'), incoming);
     }
     if (state.coveredEvents === state.events.length || (!force && !due(state.events, state.coveredEvents))) return state;
-    // Bound each invocation to two model calls; later hooks continue from the saved prefix.
-    for (let batch = 0; batch < 2 && state.coveredEvents < state.events.length; batch++) {
+    // Bound each invocation's model calls; later hooks continue from the saved prefix.
+    for (let batch = 0; batch < maxBatches && state.coveredEvents < state.events.length; batch++) {
       const delta: Event[] = [];
       let tokens = 0;
       for (const event of state.events.slice(state.coveredEvents)) {

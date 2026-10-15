@@ -33,10 +33,19 @@ pointer. This is private task data, not a project-wide source of instructions. N
 automatic cleanup is performed. Remove state only when the session no longer needs
 its evidence.
 
-Catch-up processes at most two batches per invocation, each targeting 8,000
-byte-estimated tokens of new events. Event boundaries are preserved; a single larger
-event is sent intact. Existing entries and their evidence are additional input.
-Each model call has a 60-second timeout. Each validated batch is committed before
+Catch-up processes at most two batches per `Stop` invocation and one per `PreCompact`,
+each targeting 8,000 byte-estimated tokens of new events. Event boundaries are
+preserved; a single larger event is sent intact. Current (non-superseded) entries are
+additional input; their source text and superseded entries are not resent. Claude
+compactor calls run at `--effort low`. Each model call has a 140-second timeout.
+
+`Stop` returns `{}` at once and checkpoints in a detached worker, so the host never
+waits on the model. A worker failure is silent; its backlog stays UNCOVERED and the
+next hook retries it. When `TYPESAFE_API_KEY` is set, Jev filters each batch first:
+user messages always go to the compactor, tool results and pure tool calls never do,
+and Jev keeps assistant prose it rates at 0.3 or higher (uncalibrated). A batch with
+nothing kept advances coverage without a compactor call. If Jev fails, the full
+batch goes to the compactor. Assistant prose is sent to Jev. Each validated batch is committed before
 the next starts; later hooks continue from that prefix, and PreCompact may still
 leave a backlog. Native compaction continues; restoration marks the backlog UNCOVERED.
 A rejected structured response is saved privately as `rejected.json` with the rule

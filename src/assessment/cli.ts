@@ -1,11 +1,14 @@
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkpoint, inspect, render } from './record.js';
 import type { Event, Extractor, SessionKey } from './record.js';
 import { normalize, reconcile, hookOutput } from './adapters.js';
 import { modelExtractor } from './runner.js';
+import { triagedExtractor } from './triage.js';
+import { JevClient } from '../client.js';
 import type { Model } from './runner.js';
 
 const defaultRoot = join(homedir(), '.local', 'state', 'compaction-assessment');
@@ -23,7 +26,9 @@ export async function handleHook(root: string, host: SessionKey['host'], envelop
   const rows = raw.split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
   const archived = await inspect(root, key);
   const events = reconcile(archived.events, normalize(host, rows));
-  await checkpoint(root, key, events, extract, envelope.hook_event_name === 'PreCompact');
+  // PreCompact blocks the host under a 180s hook timeout, so it gets one model call.
+  const precompact = envelope.hook_event_name === 'PreCompact';
+  await checkpoint(root, key, events, extract, precompact, precompact ? 1 : 2);
   return {};
 }
 export async function main(args = process.argv.slice(2)): Promise<void> {
@@ -40,7 +45,18 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   const host = hostArg as SessionKey['host'];
   if (command === 'hook') {
     const model = session as Model;
-    try { console.log(JSON.stringify(await handleHook(root, host, JSON.parse(await stdin()), modelExtractor(model)))); }
+    const input = await stdin();
+    try {
+      const envelope = JSON.parse(input);
+      // Stop fires after every reply: checkpoint in a detached worker so the host never waits on the model.
+      // Worker failures stay silent; their backlog is marked UNCOVERED at restore and PreCompact retries it.
+      if (envelope?.hook_event_name === 'Stop' && !args.includes('--foreground')) {
+        const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2), '--foreground'], { detached: true, stdio: ['pipe', 'ignore', 'ignore'] });
+        child.stdin.end(input); child.unref(); console.log('{}'); return;
+      }
+      const extract = process.env.TYPESAFE_API_KEY ? triagedExtractor(modelExtractor(model), new JevClient()) : modelExtractor(model);
+      console.log(JSON.stringify(await handleHook(root, host, envelope, extract)));
+    }
     catch (error) { console.log(JSON.stringify({ systemMessage: 'Compaction preservation incomplete: ' + (error as Error).message })); }
     return;
   }
