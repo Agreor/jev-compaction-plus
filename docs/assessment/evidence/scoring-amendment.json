@@ -1,0 +1,5 @@
+{
+  "reason": "PostgreSQL (local) is the same database choice; location is separately scored. Allow only the unambiguous local suffix, reject cloud suffix and wrong database.",
+  "scope": "All arms, saved outputs rescored without new model calls; original outcomes retained.",
+  "date": "2026-10-15T03:36:41.025Z"
+}

@@ -1,0 +1,19 @@
+{
+  "codex": {
+    "status": "completed",
+    "threshold": 155040,
+    "effectiveWindow": 258400,
+    "inputBeforeCompaction": 158998,
+    "autoCompactions": 1,
+    "reportedCumulativeTokens": 300045,
+    "rpcInputLimitCorrection": "Initial 1.2M-character padding request was rejected before inference; shorter x-padding used once in revised probe."
+  },
+  "claude": {
+    "status": "completed",
+    "threshold": 120000,
+    "effectiveWindow": 200000,
+    "inputBeforeCompaction": 123071,
+    "autoCompactions": 1,
+    "reportedCumulativeTokensIncludingCompaction": 355967
+  }
+}

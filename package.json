@@ -24,7 +24,11 @@
     "test": "vitest run",
     "demo": "tsx examples/demo.ts",
     "typecheck:hooks": "tsc -p tsconfig.hooks.json",
-    "validate:plugin": "claude plugin validate .claude-plugin/plugin.json"
+    "validate:plugin": "claude plugin validate .claude-plugin/plugin.json",
+    "assessment": "tsx src/assessment/cli.ts",
+    "assessment:evaluate": "tsx src/assessment/evaluate.ts",
+    "assessment:native-codex": "tsx src/assessment/native-probe.ts",
+    "assessment:native-claude": "tsx src/assessment/claude-native-probe.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

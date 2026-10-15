@@ -158,3 +158,9 @@ npm run typecheck
 This is built on [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) by tamara tran (MIT): the state fitting, batching and hook design are theirs. The drawer, previews and other changes listed above come from [jev-compaction-plus](https://github.com/cth9191/jev-compaction-plus) by cth9191 (MIT). Agreor maintains this copy independently and adds the plugin-trigger skip, subagent-turn guard and safer drawer writes. MIT licensed, see [LICENSE](LICENSE).
 
 The 10% minimum and revised drawer question are initial policies, not measured classifier calibration. Reduction is estimated from characters, not actual context tokens. Conversation text (including decisions and branch discussions) stays unchanged.
+
+## Preservation assessment
+
+An opt-in [decision and plan preservation prototype](docs/assessment/README.md) evaluates
+Haiku and GPT-6 Luna alongside native compaction. It does not enable hooks or change
+production compaction settings.

@@ -1,0 +1,468 @@
+[
+  {
+    "fixture": "long-refinement",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "steps",
+        "expected": "ingest,validate,index,preview,publish",
+        "actual": "ingest, validate, index, preview, publish",
+        "pass": true
+      },
+      {
+        "key": "index",
+        "expected": "FTS5",
+        "actual": "FTS5",
+        "pass": true
+      },
+      {
+        "key": "network",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "validate",
+        "actual": "validate",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "long-refinement",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "steps",
+        "expected": "ingest,validate,index,preview,publish",
+        "actual": "ingest, validate, index, preview, publish",
+        "pass": true
+      },
+      {
+        "key": "index",
+        "expected": "FTS5",
+        "actual": "FTS5",
+        "pass": true
+      },
+      {
+        "key": "network",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "validate",
+        "actual": "validate",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "long-refinement",
+    "arm": "gpt-6-luna",
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "steps",
+        "expected": "ingest,validate,index,preview,publish",
+        "actual": "ingest, validate, index, preview, publish",
+        "pass": true
+      },
+      {
+        "key": "index",
+        "expected": "FTS5",
+        "actual": "FTS5",
+        "pass": true
+      },
+      {
+        "key": "network",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "validate",
+        "actual": "validate",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "reversed-decision",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "database",
+        "expected": "PostgreSQL",
+        "actual": "PostgreSQL",
+        "pass": true
+      },
+      {
+        "key": "oldDatabase",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "cloud",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "reversed-decision",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "database",
+        "expected": "PostgreSQL",
+        "actual": "PostgreSQL",
+        "pass": true
+      },
+      {
+        "key": "oldDatabase",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "cloud",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "reversed-decision",
+    "arm": "gpt-6-luna",
+    "pass": false,
+    "correct": 2,
+    "total": 3,
+    "rows": [
+      {
+        "key": "database",
+        "expected": "PostgreSQL",
+        "actual": "PostgreSQL (local)",
+        "pass": false
+      },
+      {
+        "key": "oldDatabase",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "cloud",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "proposal-vs-agreement",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "telemetry",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "email",
+        "expected": "undecided",
+        "actual": "undecided",
+        "pass": true
+      },
+      {
+        "key": "exports",
+        "expected": "CSV,Markdown",
+        "actual": "CSV, Markdown",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "CSV",
+        "actual": "CSV",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "proposal-vs-agreement",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "telemetry",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "email",
+        "expected": "undecided",
+        "actual": "undecided",
+        "pass": true
+      },
+      {
+        "key": "exports",
+        "expected": "CSV,Markdown",
+        "actual": "CSV, Markdown",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "CSV",
+        "actual": "CSV",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "exact-constraints",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 5,
+    "total": 5,
+    "rows": [
+      {
+        "key": "retention",
+        "expected": "604800",
+        "actual": "604800",
+        "pass": true
+      },
+      {
+        "key": "workers",
+        "expected": "37",
+        "actual": "37",
+        "pass": true
+      },
+      {
+        "key": "marker",
+        "expected": "ROLLBACK-T482",
+        "actual": "ROLLBACK-T482",
+        "pass": true
+      },
+      {
+        "key": "retry",
+        "expected": "250",
+        "actual": "250",
+        "pass": true
+      },
+      {
+        "key": "dryrun",
+        "expected": "yes",
+        "actual": "yes",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "exact-constraints",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 5,
+    "total": 5,
+    "rows": [
+      {
+        "key": "retention",
+        "expected": "604800",
+        "actual": "604800",
+        "pass": true
+      },
+      {
+        "key": "workers",
+        "expected": "37",
+        "actual": "37",
+        "pass": true
+      },
+      {
+        "key": "marker",
+        "expected": "ROLLBACK-T482",
+        "actual": "ROLLBACK-T482",
+        "pass": true
+      },
+      {
+        "key": "retry",
+        "expected": "250",
+        "actual": "250",
+        "pass": true
+      },
+      {
+        "key": "dryrun",
+        "expected": "yes",
+        "actual": "yes",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "large-tool-output",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "trace",
+        "expected": "TRACE-Q917",
+        "actual": "TRACE-Q917",
+        "pass": true
+      },
+      {
+        "key": "upload",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "retry",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "large-tool-output",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "trace",
+        "expected": "TRACE-Q917",
+        "actual": "TRACE-Q917",
+        "pass": true
+      },
+      {
+        "key": "upload",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "retry",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "interrupted-resume",
+    "arm": "full-context-reference",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "parse",
+        "expected": "yes",
+        "actual": "yes",
+        "pass": true
+      },
+      {
+        "key": "verify",
+        "expected": "failed",
+        "actual": "failed",
+        "pass": true
+      },
+      {
+        "key": "commit",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "interrupted-resume",
+    "arm": "claude-haiku-5-5",
+    "pass": true,
+    "correct": 3,
+    "total": 3,
+    "rows": [
+      {
+        "key": "parse",
+        "expected": "yes",
+        "actual": "yes",
+        "pass": true
+      },
+      {
+        "key": "verify",
+        "expected": "failed",
+        "actual": "failed",
+        "pass": true
+      },
+      {
+        "key": "commit",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "fixture": "long-refinement",
+    "arm": "claude-haiku-5-5",
+    "repeat": true,
+    "pass": true,
+    "correct": 4,
+    "total": 4,
+    "rows": [
+      {
+        "key": "steps",
+        "expected": "ingest,validate,index,preview,publish",
+        "actual": "ingest, validate, index, preview, publish",
+        "pass": true
+      },
+      {
+        "key": "index",
+        "expected": "FTS5",
+        "actual": "FTS5",
+        "pass": true
+      },
+      {
+        "key": "network",
+        "expected": "no",
+        "actual": "no",
+        "pass": true
+      },
+      {
+        "key": "next",
+        "expected": "validate",
+        "actual": "validate",
+        "pass": true
+      }
+    ]
+  }
+]
