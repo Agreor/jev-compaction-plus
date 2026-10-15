@@ -33,6 +33,16 @@ pointer. This is private task data, not a project-wide source of instructions. N
 automatic cleanup is performed. Remove state only when the session no longer needs
 its evidence.
 
+Catch-up processes at most two batches per invocation, each targeting 8,000
+byte-estimated tokens of new events. Event boundaries are preserved; a single larger
+event is sent intact. Existing entries and their evidence are additional input.
+Each model call has a 60-second timeout. Each validated batch is committed before
+the next starts; later hooks continue from that prefix, and PreCompact may still
+leave a backlog. Native compaction continues; restoration marks the backlog UNCOVERED.
+A rejected structured response is saved privately as `rejected.json` with the rule
+that failed and batch coverage. This record may contain conversation data; it stays
+in the session state directory, never the host scratchpad.
+
 A failed extraction preserves the previous checkpoint and archived pending events.
 The renderer marks those events UNCOVERED. Structural validation checks provenance,
 not the semantic completeness of an extraction. The evaluation tests that separately.

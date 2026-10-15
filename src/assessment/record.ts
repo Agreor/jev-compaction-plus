@@ -66,12 +66,15 @@ export function validateEntries(value: unknown, existing: Entry[], events: Event
   const ids = new Set(existing.map(e => e.id));
   const result: Entry[] = [];
   for (const e of value) {
-    if (!e || typeof e.id !== 'string' || !e.id || ids.has(e.id) ||
+    if (!e || typeof e.id !== 'string' || !e.id ||
         !['goal', 'constraint', 'decision', 'alternative', 'question', 'plan', 'progress', 'next'].includes(e.kind) ||
         !['accepted', 'proposed', 'rejected', 'open', 'done'].includes(e.status) ||
         typeof e.text !== 'string' || !e.text.trim() || typeof e.rationale !== 'string' ||
-        !Array.isArray(e.sourceIds) || !e.sourceIds.length || !e.sourceIds.every((id: unknown) => typeof id === 'string' && sources.has(id)) ||
-        !Array.isArray(e.supersedes) || !e.supersedes.every((id: unknown) => typeof id === 'string' && ids.has(id))) throw new Error('invalid entry, source reference, or supersession');
+        !Array.isArray(e.sourceIds) || !e.sourceIds.length || !e.sourceIds.every((id: unknown) => typeof id === 'string') ||
+        !Array.isArray(e.supersedes) || !e.supersedes.every((id: unknown) => typeof id === 'string')) throw new Error('invalid entry shape');
+    if (ids.has(e.id)) throw new Error('duplicate entry ID');
+    if (!e.sourceIds.every((id: string) => sources.has(id))) throw new Error('unknown source reference');
+    if (!e.supersedes.every((id: string) => ids.has(id))) throw new Error('unknown supersession reference');
     if (e.status === 'accepted' && !e.sourceIds.some((id: string) => sources.get(id)?.role === 'user')) throw new Error('accepted entry requires user source evidence');
     ids.add(e.id); result.push(e as Entry);
   }
@@ -93,7 +96,7 @@ export async function checkpoint(root: string, key: SessionKey, incoming: Event[
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw new Error('checkpoint busy; inspect lock before recovery'); await sleep(50); }
   }
   try {
-    const state = await inspect(root, key);
+    let state = await inspect(root, key);
     const overlap = Math.min(state.events.length, incoming.length);
     for (let i = 0; i < overlap; i++) if (JSON.stringify(state.events[i]) !== JSON.stringify(incoming[i])) throw new Error('history changed; reconcile transcript before checkpointing');
     if (incoming.length > state.events.length) {
@@ -101,13 +104,33 @@ export async function checkpoint(root: string, key: SessionKey, incoming: Event[
       await atomic(join(dir, 'events.json'), incoming);
     }
     if (state.coveredEvents === state.events.length || (!force && !due(state.events, state.coveredEvents))) return state;
-    const delta = state.events.slice(state.coveredEvents);
-    const updates = validateEntries(await extract(state, delta), state.entries, state.events);
-    const next = { schema: 1, host: key.host, session: key.session, entries: [...state.entries, ...updates], coveredEvents: state.events.length };
-    const file = 'checkpoint-' + randomUUID() + '.json';
-    await writeFile(join(dir, file), JSON.stringify(next, null, 2), { mode: 0o600, flag: 'wx' });
-    await atomic(join(dir, 'latest.json'), { file });
-    return { ...state, ...next, schema: 1, checkpoint: file };
+    // Bound each invocation to two model calls; later hooks continue from the saved prefix.
+    for (let batch = 0; batch < 2 && state.coveredEvents < state.events.length; batch++) {
+      const delta: Event[] = [];
+      let tokens = 0;
+      for (const event of state.events.slice(state.coveredEvents)) {
+        const size = estimateTokens(JSON.stringify(event));
+        if (delta.length && tokens + size > 8000) break;
+        delta.push(event); tokens += size;
+      }
+      const raw = await extract(state, delta);
+      let updates: Entry[];
+      const coveredEvents = state.coveredEvents + delta.length;
+      const suppliedIds = new Set([...state.entries.flatMap(e => e.sourceIds), ...delta.map(e => e.id)]);
+      try { updates = validateEntries(raw, state.entries, state.events.filter(e => suppliedIds.has(e.id))); }
+      catch (error) {
+        await atomic(join(dir, 'rejected.json'), { coveredEvents: state.coveredEvents,
+          eventCount: delta.length, entries: raw, error: (error as Error).message });
+        throw error;
+      }
+      const next = { schema: 1 as const, host: key.host, session: key.session,
+        entries: [...state.entries, ...updates], coveredEvents };
+      const file = 'checkpoint-' + randomUUID() + '.json';
+      await writeFile(join(dir, file), JSON.stringify(next, null, 2), { mode: 0o600, flag: 'wx' });
+      await atomic(join(dir, 'latest.json'), { file });
+      state = { ...state, ...next, checkpoint: file };
+    }
+    return state;
   } finally { await rm(lock, { recursive: true, force: true }); }
 }
 export function render(state: RecordState): string {
