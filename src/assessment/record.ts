@@ -89,15 +89,28 @@ export function due(events: Event[], coveredEvents: number): boolean {
 const STALE_LOCK_MS = 60_000;
 // Longer than any live extraction (two batches of Jev plus a 140s model call).
 const STALE_CLAIM_MS = 600_000;
-async function withLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+const ageOf = (path: string) => stat(path).then(s => Date.now() - s.mtimeMs, () => 0);
+/** Removes a stale lock under a guard, so two waiters cannot both remove it and then both hold a fresh one. */
+async function breakStale(lock: string) {
+  const guard = lock + '.break';
+  try { await mkdir(guard); }
+  catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    // shortcut: a crash inside the guard's millisecond window leaves it behind; it is cleared by age, which can race only after two crashes.
+    if (await ageOf(guard) > STALE_LOCK_MS) await rm(guard, { recursive: true, force: true });
+    return;
+  }
+  try { if (await ageOf(lock) > STALE_LOCK_MS) await rm(lock, { recursive: true, force: true }); }
+  finally { await rm(guard, { recursive: true, force: true }); }
+}
+export async function withLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const lock = join(dir, 'lock');
   const deadline = Date.now() + 30000;
   for (;;) {
     try { await mkdir(lock); break; }
     catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const age = await stat(lock).then(s => Date.now() - s.mtimeMs, () => 0);
-      if (age > STALE_LOCK_MS) { await rm(lock, { recursive: true, force: true }); continue; }
+      if (await ageOf(lock) > STALE_LOCK_MS) { await breakStale(lock); continue; }
       if (Date.now() >= deadline) throw new Error('checkpoint busy; inspect lock before recovery');
       await sleep(50);
     }
