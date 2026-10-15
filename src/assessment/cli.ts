@@ -30,7 +30,10 @@ export async function handleHook(root: string, host: SessionKey['host'], envelop
   const events = reconcile(archived.events, normalize(host, rows));
   // PreCompact blocks the host under a 180s hook timeout, so it gets one model call.
   const precompact = envelope.hook_event_name === 'PreCompact';
-  await checkpoint(root, key, events, extract, precompact, precompact ? 1 : 2);
+  const state = await checkpoint(root, key, events, extract, precompact, precompact ? 1 : 2);
+  const uncovered = state.events.length - state.coveredEvents;
+  // Compaction proceeds either way; say so when recent turns are not in the record yet.
+  if (precompact && uncovered > 0) return { systemMessage: `Compaction preservation: ${uncovered} recent events are not recorded yet (extraction still running or backlog); restore marks them UNCOVERED.` };
   return {};
 }
 export async function main(args = process.argv.slice(2)): Promise<void> {

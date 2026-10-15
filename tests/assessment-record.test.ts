@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkpoint, inspect, render, due } from '../src/assessment/record.js';
+import { checkpoint, inspect, render, due, withLock } from '../src/assessment/record.js';
 
 const roots: string[] = [];
 async function root() { const p = await mkdtemp(join(tmpdir(), 'compaction-test-')); roots.push(p); return p; }
@@ -145,5 +145,17 @@ describe('lock and extraction claim', () => {
     const done = await checkpoint(dir, key, [first], async () => [entry], true);
     expect(done.entries).toHaveLength(1);
     await expect(readFile(join(state.directory, 'extracting.json'))).rejects.toThrow();
+  });
+  // The two-remover race needs separate processes to interleave; this checks clearing and one holder at a time.
+  it('clears a stale lock and keeps one holder at a time', async () => {
+    const dir = await root();
+    await mkdir(join(dir, 'lock'));
+    await utimes(join(dir, 'lock'), new Date(Date.now() - 120_000), new Date(Date.now() - 120_000));
+    let inside = 0, most = 0;
+    await Promise.all(Array.from({ length: 8 }, () => withLock(dir, async () => {
+      most = Math.max(most, ++inside); await new Promise(r => setTimeout(r, 20)); inside--;
+    })));
+    expect(most).toBe(1);
+    expect((await readdir(dir)).filter(f => f.startsWith('lock'))).toEqual([]);
   });
 });
