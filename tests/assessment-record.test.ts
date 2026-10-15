@@ -76,3 +76,45 @@ describe('durable preservation', () => {
     expect(due([{ ...first, text: 'x'.repeat(32000) }], 0)).toBe(true);
   });
 });
+
+it('retains successful catch-up batches when a later batch has invalid source references', async () => {
+  const dir = await root();
+  const events = [
+    { id: 'u1', role: 'user', text: 'Use SQLite. ' + 'x'.repeat(20000), turn: 1 },
+    { id: 'u2', role: 'user', text: 'No network. ' + 'y'.repeat(20000), turn: 2 },
+  ];
+  let calls = 0;
+  await expect(checkpoint(dir, key, events, async (_state, delta) => {
+    calls++;
+    if (delta[0].id === 'u1' && delta.length === 1) return [entry];
+    return [{ ...entry, id: 'bad', sourceIds: ['invented-source'] }];
+  }, true)).rejects.toThrow('unknown source');
+  const saved = await inspect(dir, key);
+  expect(calls).toBe(2);
+  expect(saved.coveredEvents).toBe(1);
+  expect(saved.entries).toHaveLength(1);
+  expect(saved.events).toHaveLength(2);
+  const rejected = JSON.parse(await readFile(join(saved.directory, 'rejected.json'), 'utf8'));
+  expect(rejected.coveredEvents).toBe(1);
+  expect(rejected.entries[0].id).toBe('bad');
+});
+
+it('bounds catch-up calls and resumes without skipping oversized events', async () => {
+  const dir = await root();
+  const events = Array.from({ length: 3 }, (_, i) => ({
+    id: `u${i + 1}`, role: 'user', text: 'x'.repeat(40000), turn: i + 1,
+  }));
+  const seen: string[] = [];
+  const extract = async (_state: unknown, delta: typeof events) => {
+    expect(delta).toHaveLength(1);
+    expect(delta[0].text).toHaveLength(40000);
+    seen.push(delta[0].id);
+    return [{ ...entry, id: `entry-${delta[0].id}`, sourceIds: [delta[0].id] }];
+  };
+  const partial = await checkpoint(dir, key, events, extract, true);
+  expect(partial.coveredEvents).toBe(2);
+  expect(render(partial)).toContain('UNCOVERED');
+  const complete = await checkpoint(dir, key, events, extract, true);
+  expect(complete.coveredEvents).toBe(3);
+  expect(seen).toEqual(['u1', 'u2', 'u3']);
+});

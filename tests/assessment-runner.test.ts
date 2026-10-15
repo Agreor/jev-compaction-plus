@@ -23,3 +23,14 @@ describe('isolated CLI runner', () => {
     await expect(runProcess(process.execPath, ['-e', 'setInterval(()=>{},1000)'], '', 50)).rejects.toThrow('timeout');
   });
 });
+
+it('constrains extraction provenance to original supplied event IDs and namespaces new entry IDs', async () => {
+  const { extractionSchema, extractionPrompt } = await import('../src/assessment/runner.js');
+  const state = { schema: 1 as const, host: 'claude', session: 'test', directory: '/tmp/test', coveredEvents: 1,
+    events: [{ id: 'original-user', role: 'user', text: 'Use SQLite', turn: 1 }, { id: 'new-user', role: 'user', text: 'No network', turn: 2 }],
+    entries: [{ id: 'decision-1', kind: 'decision' as const, status: 'accepted' as const, text: 'Use SQLite', rationale: '', sourceIds: ['original-user'], supersedes: [] }] };
+  const schema = extractionSchema(state, [state.events[1]]);
+  expect(schema.properties.entries.items.properties.sourceIds.items.enum).toEqual(['original-user', 'new-user']);
+  expect(schema.properties.entries.items.properties.sourceIds.minItems).toBe(1);
+  expect(extractionPrompt(state, [state.events[1]])).toContain('cp1-');
+});
