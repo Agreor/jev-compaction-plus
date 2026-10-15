@@ -1,0 +1,37 @@
+{
+  "started": "2026-10-15T03:31:51.285Z",
+  "decision": "Choose native-only vs incremental preservation, and Haiku vs Luna, based on decision retention, continuation correctness, total tokens and latency.",
+  "hypotheses": {
+    "native": "No checkpoint overhead; may lose decisions.",
+    "sidecar": "Better decision continuity; extra calls and restored-context cost.",
+    "haiku": "Lower overhead; possible omission risk.",
+    "luna": "Potential quality benefit; larger CLI overhead."
+  },
+  "limits": {
+    "calls": 100,
+    "reportedTokens": 2000000,
+    "runtimeMs": 3600000,
+    "perCallMs": 120000
+  },
+  "preflight": {
+    "calls": 4,
+    "knownTokens": 13968,
+    "unknownUsageCalls": 2
+  },
+  "workingModel": "gpt-6-luna",
+  "compactors": [
+    "claude-haiku-5-5",
+    "gpt-6-luna"
+  ],
+  "rubric": "Exact predefined answers (case and whitespace normalized). Zero marked-decision losses. No retry on quality failure. Gold answers never enter extraction or continuation prompts.",
+  "efficiencyGate": "At least 15% better tokens or elapsed time, other metric no more than 10% worse, against actual 60% native baseline only.",
+  "controls": [
+    "full original context reference",
+    "short-session nonactivation",
+    "reversal",
+    "proposal vs approval",
+    "tool-data instruction look-alike",
+    "interruption/resume"
+  ],
+  "scopeLimit": "Synthetic preservation/continuation evidence is not proof of native compaction performance or desktop compatibility. Native host measurements are recorded separately. No population-wide claim."
+}

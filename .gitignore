@@ -2,3 +2,6 @@ node_modules
 dist
 .env
 demo/JevDemo/build
+
+# Opt-in synthetic assessment scratch; retained evidence lives in docs/assessment.
+.assessment/

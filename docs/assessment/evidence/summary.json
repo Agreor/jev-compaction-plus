@@ -1,0 +1,104 @@
+{
+  "checkpointMetrics": {
+    "claude-haiku-5-5": {
+      "checkpointCalls": 18,
+      "reportedInputTokens": 102127,
+      "reportedOutputTokens": 18301,
+      "elapsedMs": 125581,
+      "medianMs": 6753.5,
+      "cacheReadInputTokens": 13788
+    },
+    "gpt-6-luna": {
+      "checkpointCalls": 14,
+      "reportedInputTokens": 195665,
+      "reportedOutputTokens": 1784,
+      "elapsedMs": 69184,
+      "medianMs": 4985.5,
+      "cacheReadInputTokens": 59136
+    }
+  },
+  "aggregateConservativeInvocations": 80,
+  "knownReportedTokens": 1311726,
+  "unknownUsage": [
+    "two initial Codex warning attempts",
+    "native compaction billing is not exposed by token updates"
+  ],
+  "codexNative": {
+    "status": "completed",
+    "resolvedModel": "gpt-6-luna",
+    "explicitCompactions": 3,
+    "compactMs": [
+      3681,
+      3776,
+      4335
+    ],
+    "score": {
+      "pass": true,
+      "correct": 4,
+      "total": 4,
+      "rows": [
+        {
+          "key": "steps",
+          "expected": "ingest,validate,index,preview,publish",
+          "actual": "ingest, validate, index, preview, publish",
+          "pass": true
+        },
+        {
+          "key": "index",
+          "expected": "FTS5",
+          "actual": "FTS5",
+          "pass": true
+        },
+        {
+          "key": "network",
+          "expected": "no",
+          "actual": "no",
+          "pass": true
+        },
+        {
+          "key": "next",
+          "expected": "validate",
+          "actual": "validate",
+          "pass": true
+        }
+      ]
+    },
+    "auto60Tested": true,
+    "persistedReadSucceeded": true,
+    "restartResumeTested": false,
+    "reportedCumulativeTokens": 54576
+  },
+  "codexInitialProbe": {
+    "status": "inconclusive",
+    "error": "native probe timeout: thread/compacted",
+    "cause": "Deprecated notification waited for; actual compaction item exists in trace; revised probe succeeds."
+  },
+  "claudeNative": {
+    "status": "unsupported-in-print-environment",
+    "reportedTransportStatus": "completed",
+    "nativeCompactionsVerified": 0,
+    "reason": "/compact isn't available in this environment.",
+    "originalQuizIsNativeEvidence": false,
+    "calls": 7,
+    "reportedTokens": 16268
+  },
+  "autoThreshold": {
+    "codex": {
+      "status": "completed",
+      "threshold": 155040,
+      "effectiveWindow": 258400,
+      "inputBeforeCompaction": 158998,
+      "autoCompactions": 1,
+      "reportedCumulativeTokens": 300045,
+      "rpcInputLimitCorrection": "Initial 1.2M-character padding request was rejected before inference; shorter x-padding used once in revised probe."
+    },
+    "claude": {
+      "status": "completed",
+      "threshold": 120000,
+      "effectiveWindow": 200000,
+      "inputBeforeCompaction": 123071,
+      "autoCompactions": 1,
+      "reportedCumulativeTokensIncludingCompaction": 355967
+    }
+  }
+}
