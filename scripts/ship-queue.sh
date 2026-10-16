@@ -28,8 +28,16 @@ ship_one() {  # $1 PR number, $2 log file
   fi
   base=$(git rev-parse origin/main)
   if ! git rebase origin/main >"$log" 2>&1; then
-    git rebase --abort
-    block "$pr" "the rebase on main has a conflict" "$log"; return 1
+    # A repository may resolve its own mechanical conflicts; each stop of the rebase gets one try.
+    # Only a completed `rebase --continue` counts; a rebase that never started must still block.
+    rebased=no
+    while [ -f scripts/resolve-rebase-conflict.py ] && python3 scripts/resolve-rebase-conflict.py >>"$log" 2>&1; do
+      if GIT_EDITOR=true git rebase --continue >>"$log" 2>&1; then rebased=yes; break; fi
+    done
+    if [ "$rebased" = no ]; then
+      git rebase --abort
+      block "$pr" "the rebase on main has a conflict" "$log"; return 1
+    fi
   fi
   if ! bash scripts/ci-gates.sh >"$log" 2>&1; then
     result=$(grep -E '^RESULT (PASS|FAIL) [0-9]+ file' "$log" | tail -n 1)
