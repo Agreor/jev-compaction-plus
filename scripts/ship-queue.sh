@@ -21,12 +21,18 @@ block() {  # $1 PR number, $2 reason, $3 log file
 
 # Returns 0 when merged, 1 when blocked, 2 when main moved and the PR must be retried.
 ship_one() {  # $1 PR number, $2 log file
-  local pr=$1 log=$2 head sha
+  local pr=$1 log=$2 head sha reason
+  git reset -q --hard  # a gate that left a tracked file modified must not block the next PR
   head=$(gh pr view "$pr" --json headRefName --jq .headRefName) || { block "$pr" "the PR could not be read" "$log"; return 1; }
   if ! { git fetch -q origin main "$head" && git checkout -q -B "$head" "origin/$head"; } >"$log" 2>&1; then
     block "$pr" "the fetch or checkout failed" "$log"; return 1
   fi
   base=$(git rev-parse origin/main)
+  # A rebase drops merge commits and any change made only inside one, so such a branch is sent back.
+  if [ -n "$(git rev-list --merges "origin/main..origin/$head")" ]; then
+    echo "the branch has a merge commit" >"$log"
+    block "$pr" "the branch has a merge commit; rebase it on main without merges" "$log"; return 1
+  fi
   if ! git rebase origin/main >"$log" 2>&1; then
     # A repository may resolve its own mechanical conflicts; each stop of the rebase gets one try.
     # Only a completed `rebase --continue` counts; a rebase that never started must still block.
@@ -49,7 +55,9 @@ ship_one() {  # $1 PR number, $2 log file
   sha=$(git rev-parse HEAD)
   if ! git push --force-with-lease="$head:origin/$head" origin "HEAD:$head" >"$log" 2>&1; then
     # A GITHUB_TOKEN cannot push rewritten commits that touch .github/workflows.
-    block "$pr" "the push failed (a PR that changes .github/workflows needs a manual rebase)" "$log"; return 1
+    reason="the push was rejected (the branch changed while the bot worked)"
+    ! grep -qi workflow "$log" || reason="the push failed (a PR that changes .github/workflows needs a manual rebase)"
+    block "$pr" "$reason" "$log"; return 1
   fi
   # ponytail: poll up to 30 s for GitHub to see the pushed head before merging.
   for _ in $(seq 1 15); do
@@ -61,7 +69,7 @@ ship_one() {  # $1 PR number, $2 log file
   if ! gh pr merge "$pr" --squash --match-head-commit "$sha" >"$log" 2>&1; then
     block "$pr" "the merge failed" "$log"; return 1
   fi
-  git push -q origin --delete "$head" >/dev/null 2>&1 || true
+  git push -q --force-with-lease="$head:$sha" origin ":$head" >/dev/null 2>&1 || true  # only the head that merged
   echo "merged #$pr at $sha"
 }
 
