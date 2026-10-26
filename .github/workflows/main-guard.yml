@@ -1,0 +1,35 @@
+name: Main guard
+
+# Detective control: this plan cannot protect main, so flag any push that did not come through the
+# merge button or the bot. It cannot undo a push, and a writer can edit this file; it catches mistakes.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check who pushed to main
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -eu
+          range="$AFTER^!"  # a brand-new main has no earlier tip to compare with
+          if [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            git merge-base --is-ancestor "$BEFORE" "$AFTER" 2>/dev/null \
+              || { echo "::error::main was force-pushed or rewound; $BEFORE is not an ancestor of $AFTER"; exit 1; }
+            range="$BEFORE..$AFTER"
+          fi
+          # A squash merge is committed by GitHub itself; anything else was pushed by hand.
+          # Fields are compared one by one, so a subject that quotes the identity cannot pass.
+          bad=$(git log --format='%h%x09%cN%x09%cE%x09%s' "$range" | awk -F'\t' '$2 != "GitHub" || $3 != "noreply@github.com"')
+          [ -z "$bad" ] || { echo "::error::commits on main not made by the merge button or bot"; echo "$bad"; exit 1; }
