@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Merge every open PR labelled `ship`, oldest first. Each PR is rebased on the
-# latest main and gated before it merges, so two PRs cannot break main together.
+# Merge every open PR labelled `ship`, oldest first. Each PR is gated on its merge
+# with the latest main and merged unchanged, so two PRs cannot break main together.
+# A conflicting PR falls back to a rebase, which the bot must push before merging.
 set -uo pipefail
 git config user.name ship-bot
 git config user.email ship-bot@users.noreply.github.com
@@ -21,7 +22,7 @@ block() {  # $1 PR number, $2 reason, $3 log file
 
 # Returns 0 when merged, 1 when blocked, 2 when main moved and the PR must be retried.
 ship_one() {  # $1 PR number, $2 log file
-  local pr=$1 log=$2 head sha reason
+  local pr=$1 log=$2 head sha reason hsha gated pushed merged
   git reset -q --hard  # a gate that left a tracked file modified must not block the next PR
   head=$(gh pr view "$pr" --json headRefName --jq .headRefName) || { block "$pr" "the PR could not be read" "$log"; return 1; }
   if ! { git fetch -q origin main "$head" && git checkout -q -B "$head" "origin/$head"; } >"$log" 2>&1; then
@@ -32,6 +33,12 @@ ship_one() {  # $1 PR number, $2 log file
   if [ -n "$(git rev-list --merges "origin/main..origin/$head")" ]; then
     echo "the branch has a merge commit" >"$log"
     block "$pr" "the branch has a merge commit; rebase it on main without merges" "$log"; return 1
+  fi
+  # A clean merge is gated as a local commit and the head merges unchanged: no push, so no
+  # synchronize event whose CI run fails at startup once the bot has merged and deleted the branch.
+  hsha=$(git rev-parse "origin/$head"); pushed=yes
+  if gated=$(git merge-tree --write-tree origin/main "origin/$head" 2>>"$log"); then
+    git checkout -q --detach "$(git commit-tree "$gated" -p origin/main -m "gate #$pr")"; pushed=no
   fi
   if ! git rebase origin/main >"$log" 2>&1; then
     # A repository may resolve its own mechanical conflicts; each stop of the rebase gets one try.
@@ -52,18 +59,27 @@ ship_one() {  # $1 PR number, $2 log file
   fi
   result=$(grep -E '^RESULT (PASS|FAIL) [0-9]+ file' "$log" | tail -n 1)
   [ -z "$result" ] || echo "#$pr $result"
-  sha=$(git rev-parse HEAD)
-  if ! git push --force-with-lease="$head:origin/$head" origin "HEAD:$head" >"$log" 2>&1; then
-    # A GITHUB_TOKEN cannot push rewritten commits that touch .github/workflows.
-    reason="the push was rejected (the branch changed while the bot worked)"
-    ! grep -qi workflow "$log" || reason="the push failed (a PR that changes .github/workflows needs a manual rebase)"
-    block "$pr" "$reason" "$log"; return 1
+  if [ "$pushed" = no ]; then
+    sha=$hsha
+    # shortcut: GitHub reports UNKNOWN for a while after main moves; wait up to 30 s, then try anyway.
+    for _ in $(seq 1 15); do
+      [ "$(gh pr view "$pr" --json mergeable --jq .mergeable)" = MERGEABLE ] && break
+      sleep 2
+    done
+  else
+    sha=$(git rev-parse HEAD); gated=$(git rev-parse "HEAD^{tree}")
+    if ! git push --force-with-lease="$head:origin/$head" origin "HEAD:$head" >"$log" 2>&1; then
+      # A GITHUB_TOKEN cannot push rewritten commits that touch .github/workflows.
+      reason="the push was rejected (the branch changed while the bot worked)"
+      ! grep -qi workflow "$log" || reason="the push failed (a PR that changes .github/workflows needs a manual rebase)"
+      block "$pr" "$reason" "$log"; return 1
+    fi
+    # ponytail: poll up to 30 s for GitHub to see the pushed head before merging.
+    for _ in $(seq 1 15); do
+      [ "$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" = "$sha" ] && break
+      sleep 2
+    done
   fi
-  # ponytail: poll up to 30 s for GitHub to see the pushed head before merging.
-  for _ in $(seq 1 15); do
-    [ "$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" = "$sha" ] && break
-    sleep 2
-  done
   # --match-head-commit pins the head only; also make sure main is the base that was gated.
   [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$base" ] || return 2
   if ! gh pr merge "$pr" --squash --match-head-commit "$sha" >"$log" 2>&1; then
@@ -71,6 +87,22 @@ ship_one() {  # $1 PR number, $2 log file
   fi
   git push -q --force-with-lease="$head:$sha" origin ":$head" >/dev/null 2>&1 || true  # only the head that merged
   echo "merged #$pr at $sha"
+  # The squash is GitHub's merge, not the gated commit; a different tree means main holds ungated code.
+  merged=$(gh pr view "$pr" --json mergeCommit --jq .mergeCommit.oid)
+  git fetch -q origin main
+  if [ "$(git rev-parse "$merged^{tree}" 2>/dev/null)" != "$gated" ]; then
+    echo "merged tree differs from the gated tree: $merged has $(git rev-parse "$merged^{tree}" 2>&1), the gates ran on $gated" >"$log"
+    {
+      echo "Ship bot warning: the merged tree differs from the gated tree; check main now."
+      echo
+      echo '```'
+      cat "$log"
+      echo '```'
+    } > "$RUNNER_TEMP/ship-comment.md"
+    gh pr comment "$pr" --body-file "$RUNNER_TEMP/ship-comment.md" >/dev/null
+    echo "#$pr $(cat "$log")"
+    return 1
+  fi
 }
 
 status=0
