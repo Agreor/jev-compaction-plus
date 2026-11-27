@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "context_path": "PROJECT_CONTEXT.md",
+  "review_lines": 180,
+  "temporary_max_lines": 220,
+  "enforcement_baseline_lines": 0,
+  "required_sections": {
+    "active_status": "Status",
+    "current_workstream": "Current Workstreams",
+    "open_risk": "Open Questions",
+    "next_action": "Current Goal"
+  },
+  "override_rationale": null,
+  "checker_sha256": "608cd8b7f846cf3a90ac6f896d6bde86b6ae6993108794320018ad069d69bac9"
+}
