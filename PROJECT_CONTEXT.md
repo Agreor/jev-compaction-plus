@@ -36,3 +36,15 @@ Your messages, Claude's replies, the first message and the newest 6 messages are
 - Do not treat it as local: conversation text, tool inputs and result previews go to
   TypeSafe or OpenRouter, depending on the key.
 - Do not assume a compaction survives a session resume; it does not.
+
+## Current Goal
+
+- Keep the fork working; no feature work is planned.
+
+## Current Workstreams
+
+- None active. The preservation prototype in `docs/assessment/` is opt-in and not enabled.
+
+## Open Questions
+
+- None recorded. Upstream is reassessed by hand only (see Status).

@@ -5,3 +5,4 @@ npm ci --ignore-scripts
 npm test
 npm run typecheck
 npm run build
+python3 scripts/check-project-context.py --format json
